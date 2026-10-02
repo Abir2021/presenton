@@ -9,19 +9,12 @@ import { getHeader } from "./header";
 
 const TEMPLATE_THEME_CACHE_TTL_MS = 5 * 60 * 1000;
 
-export interface LayoutGenerationOptions {
-    text_growth: boolean;
-    visual_replacement: boolean;
-    flexible_grouping: boolean;
-}
-
 export interface CreateTemplatePayload {
     pptx_url: string;
     slide_image_urls: string[];
     fonts: Record<string, unknown>;
     name: string;
     description?: string | null;
-    generation_options?: Partial<LayoutGenerationOptions>;
 }
 
 export interface TemplateListResponse {
@@ -92,7 +85,6 @@ export interface UpdateTemplatePayload extends Partial<TemplateDetailsResponse> 
 export interface CreateTemplateLayoutPayload {
     template_id: string;
     index: number;
-    generation_options?: Partial<LayoutGenerationOptions>;
 }
 
 export interface GenerateTemplateLayoutPayload {

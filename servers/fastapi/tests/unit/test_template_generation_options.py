@@ -73,6 +73,38 @@ def test_generation_options_reject_invalid_values(invalid):
         LayoutGenerationOptions.model_validate(invalid)
 
 
+@pytest.mark.parametrize("request_model", [api.InitTemplateRequest, api.CreateTemplateRequest])
+def test_legacy_creation_payloads_default_to_all_passes(request_model):
+    request = request_model.model_validate({
+        "pptx_url": "/deck.pptx",
+        "slide_image_urls": ["/slide.png"],
+    })
+    assert request.generation_options.model_dump() == {
+        "text_growth": True,
+        "visual_replacement": True,
+        "flexible_grouping": True,
+    }
+    assert "generation_options" not in request_model.model_json_schema().get("required", [])
+
+
+def test_omitted_options_preserve_generation_behavior(monkeypatch):
+    responses = {
+        certified_generation.VisualDataReplacementPlan: {"replacements": []},
+        certified_generation.SemanticSlideManifest: _manifest().model_dump(),
+        certified_generation.FlexibleSlidePlan: _flexible_plan().model_dump(),
+        certified_generation.TextCapacityPlan: {"adjustments": []},
+    }
+    generate = Mock(side_effect=lambda *, output_model, **kwargs: responses[output_model])
+    monkeypatch.setattr(certified_generation, "_generate_structured_with_provider_fallback", generate)
+    legacy_layout = generation.generate_slide_layout(_raw_layout(), 0, "https://example.com/slide.png")
+    assert [call.kwargs["output_model"] for call in generate.call_args_list] == list(responses)
+    explicit_layout = generation.generate_slide_layout(
+        _raw_layout(), 0, "https://example.com/slide.png",
+        generation_options=LayoutGenerationOptions(),
+    )
+    assert legacy_layout == explicit_layout
+
+
 def test_saved_options_merge_only_explicit_overrides():
     template = TemplateV2(name="Custom", assets={"generation_options": {
         "text_growth": False, "visual_replacement": False, "flexible_grouping": False,
@@ -135,6 +167,11 @@ def test_layout_route_uses_saved_options_and_partial_override(monkeypatch, fake_
     app.include_router(api.TEMPLATE_ROUTER)
     app.dependency_overrides[get_async_session] = lambda: fake_async_session
     with TestClient(app) as client:
+        legacy_response = client.post("/template/layouts/create", json={"template_id": template.id, "index": 0})
+        assert legacy_response.status_code == 200, legacy_response.text
+        assert generate.call_args.kwargs["generation_options"] == LayoutGenerationOptions(
+            text_growth=False, visual_replacement=False, flexible_grouping=False,
+        )
         response = client.post("/template/layouts/create", json={"template_id": template.id, "index": 0, "generation_options": {"flexible_grouping": True}})
         assert response.status_code == 200, response.text
         assert generate.call_args.kwargs["generation_options"] == LayoutGenerationOptions(text_growth=False, visual_replacement=False)
