@@ -248,7 +248,7 @@ def test_generate_template_generates_each_slide_and_preserves_order(monkeypatch)
     )
     calls = []
 
-    def fake_generate(source_layout, slide_index, slide_image_url, fonts=None):
+    def fake_generate(source_layout, slide_index, slide_image_url, fonts=None, *, generation_options=None):
         calls.append((source_layout.id, slide_index, slide_image_url, fonts))
         return SlideLayout.model_validate(
             _generated_layout(f"generated_{source_layout.id}")
@@ -289,7 +289,7 @@ def test_generate_template_repairs_duplicate_generated_layout_ids(monkeypatch):
         layouts=[_raw_layout("first"), _raw_layout("second")]
     )
 
-    def fake_generate(source_layout, slide_index, slide_image_url, fonts=None):
+    def fake_generate(source_layout, slide_index, slide_image_url, fonts=None, *, generation_options=None):
         return SlideLayout.model_validate(_generated_layout("duplicate_layout"))
 
     monkeypatch.setattr(

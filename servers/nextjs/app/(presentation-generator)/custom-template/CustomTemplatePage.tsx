@@ -53,7 +53,7 @@ import { setupImageUrlConverter } from "@/utils/image-url-converter";
 import { MixpanelEvent, trackEvent } from "@/utils/mixpanel";
 
 import { useFontLoader as loadFontAssets } from "../hooks/useFontLoad";
-import TemplateService from "../services/api/template";
+import TemplateService, { type LayoutGenerationOptions } from "../services/api/template";
 import { ensureTailwindBrowserScript } from "@/lib/tailwind-browser";
 import { TemplateV2LayoutPreview } from "./components/EachSlide/TemplateV2LayoutPreview";
 import { useFileUpload } from "./hooks/useFileUpload";
@@ -1422,6 +1422,8 @@ function SaveTemplateModal({
   title = "Save Template",
   subtitle = "Give your template a name.",
   submitLabel = "Save",
+  generationOptions,
+  onGenerationOptionsChange,
   onClose,
   onSave,
 }: {
@@ -1431,6 +1433,8 @@ function SaveTemplateModal({
   title?: string;
   subtitle?: string;
   submitLabel?: string;
+  generationOptions?: LayoutGenerationOptions;
+  onGenerationOptionsChange?: (options: LayoutGenerationOptions) => void;
   onClose: () => void;
   onSave: (name: string, description: string) => Promise<void>;
 }) {
@@ -1480,7 +1484,33 @@ function SaveTemplateModal({
           </button>
         </div>
 
-        <div className="space-y-4 2xl:space-y-5 px-[18px] 2xl:px-6 pb-[18px] 2xl:pb-6 pt-5 2xl:pt-6">
+        <div className="max-h-[70vh] overflow-y-auto space-y-4 2xl:space-y-5 px-[18px] 2xl:px-6 pb-[18px] 2xl:pb-6 pt-5 2xl:pt-6">
+          {generationOptions && onGenerationOptionsChange ? (
+            <fieldset disabled={isSaving} className="space-y-3">
+              <legend className="mb-2 text-sm font-medium text-[#25272F]">Generation options</legend>
+              {([
+                ["text_growth", "Text growth", "Expand editable text boxes where space allows."],
+                ["visual_replacement", "Visual replacement", "Convert recognized visuals into editable charts, lists, and infographics."],
+                ["flexible_grouping", "Flexible grouping", "Turn repeated content into flexible, reusable groups."],
+              ] as const).map(([key, label, description]) => (
+                <label key={key} className="flex items-start gap-3 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={generationOptions[key]}
+                    onChange={(event) => onGenerationOptionsChange({
+                      ...generationOptions,
+                      [key]: event.target.checked,
+                    })}
+                    className="mt-1 accent-[#7A5AF8]"
+                  />
+                  <span>
+                    <span className="block font-medium text-[#25272F]">{label}</span>
+                    <span className="text-xs text-[#7E818C]">{description}</span>
+                  </span>
+                </label>
+              ))}
+            </fieldset>
+          ) : null}
           <label className="block">
             <span className="mb-2 2xl:mb-2.5 block text-[12px] 2xl:text-sm font-medium text-[#25272F]">
               Template Name
@@ -1518,6 +1548,11 @@ const CustomTemplatePage = () => {
   const [reviewSlideIndex, setReviewSlideIndex] = useState(0);
   const [templateModalMode, setTemplateModalMode] = useState<"create" | "save" | null>(null);
   const [isSubmittingTemplate, setIsSubmittingTemplate] = useState(false);
+  const [generationOptions, setGenerationOptions] = useState<LayoutGenerationOptions>({
+    text_growth: true,
+    visual_replacement: true,
+    flexible_grouping: true,
+  });
   const localFontOptions = LOCAL_FONT_OPTIONS;
   const [selectedFallbackFonts, setSelectedFallbackFonts] = useState<
     Record<string, LocalFontOption>
@@ -1809,6 +1844,7 @@ const CustomTemplatePage = () => {
           },
           name,
           description: description || null,
+          generation_options: generationOptions,
         });
         notify.success(
           "Template generation started",
@@ -1825,7 +1861,7 @@ const CustomTemplatePage = () => {
         setIsSubmittingTemplate(false);
       }
     },
-    [router, selectedLocalFontAssets, state.previewData],
+    [generationOptions, router, selectedLocalFontAssets, state.previewData],
   );
 
   const handleSaveTemplate = useCallback(
@@ -1972,6 +2008,8 @@ const CustomTemplatePage = () => {
             : "Give your template a name."
         }
         submitLabel={isCreateTemplateModal ? "Create" : "Save"}
+        generationOptions={isCreateTemplateModal ? generationOptions : undefined}
+        onGenerationOptionsChange={setGenerationOptions}
         onClose={() => {
           if (!isSubmittingTemplate) setTemplateModalMode(null);
         }}

@@ -25,6 +25,7 @@ from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from templates.v2.models.layouts import (
     Component,
+    LayoutGenerationOptions,
     FlexibleFlowItemPlan,
     FlexibleFlowNodePlan,
     FlexibleRegionPlan,
@@ -2896,6 +2897,8 @@ def _compile_semantic_layout(
     manifest: SemanticSlideManifest,
     flexible_plan: FlexibleSlidePlan,
     text_capacity_plan: TextCapacityPlan,
+    *,
+    enable_text_growth: bool = True,
 ) -> SlideLayout:
     source_elements = copy.deepcopy(
         source_layout.model_dump(mode="json", exclude_none=True)["elements"]
@@ -2915,11 +2918,12 @@ def _compile_semantic_layout(
                 element["color"] = annotation.color
             if annotation.is_icon and annotation.icon_type is not None:
                 element["icon_type"] = annotation.icon_type
-    _reserve_single_line_text_overflow_space(
-        source_elements,
-        manifest,
-        text_capacity_plan,
-    )
+    if enable_text_growth:
+        _reserve_single_line_text_overflow_space(
+            source_elements,
+            manifest,
+            text_capacity_plan,
+        )
     _normalize_existing_text_box_limits(source_elements)
     geometry_elements = copy.deepcopy(source_elements)
     vertical_reflow_paths = _fixed_column_vertical_reflow_paths(
@@ -3651,13 +3655,17 @@ def generate_slide_layout(
     fonts: dict[str, str] | None = None,
     *,
     max_tokens: int | None = None,
+    generation_options: LayoutGenerationOptions | None = None,
 ) -> SlideLayout:
     if not source_layout.elements:
         raise ValueError("source slide must contain at least one element")
 
+    options = generation_options or LayoutGenerationOptions()
     image_part = _openai_image_part(slide_image_url)
-    visual_payload, visual_candidate_paths = _visual_data_generation_payload(
-        source_layout
+    visual_payload, visual_candidate_paths = (
+        _visual_data_generation_payload(source_layout)
+        if options.visual_replacement
+        else ({}, set())
     )
     if visual_candidate_paths:
         try:
@@ -3731,7 +3739,9 @@ def generate_slide_layout(
             "fidelity-preserving fallback slide=%d",
             slide_index + 1,
         )
-        return _replace_content_image_urls(_fallback_slide_layout(source_layout))
+        return _replace_content_image_urls(
+            _fallback_slide_layout(source_layout, enable_text_growth=options.text_growth)
+        )
 
     flexible_plan = FlexibleSlidePlan(regions=[])
     try:
@@ -3760,7 +3770,7 @@ def generate_slide_layout(
                 source_elements=source_data["elements"],
             ),
             max_tokens=max_tokens,
-        )
+        ) if options.flexible_grouping else {"regions": []}
         flexible_plan = FlexibleSlidePlan.model_validate(flexible_response)
     except Exception:
         LOGGER.exception(
@@ -3801,7 +3811,7 @@ def generate_slide_layout(
                 source_elements=source_data["elements"],
             ),
             max_tokens=max_tokens,
-        )
+        ) if options.text_growth else {"adjustments": []}
         text_capacity_plan = TextCapacityPlan.model_validate(text_capacity_response)
     except Exception:
         LOGGER.exception(
@@ -3834,6 +3844,7 @@ def generate_slide_layout(
                 manifest,
                 candidate_flexible,
                 candidate_capacity,
+                enable_text_growth=options.text_growth,
             )
         except Exception:
             LOGGER.exception(
@@ -3851,15 +3862,20 @@ def generate_slide_layout(
         "fidelity-preserving fallback slide=%d",
         slide_index + 1,
     )
-    return _replace_content_image_urls(_fallback_slide_layout(source_layout))
+    return _replace_content_image_urls(
+        _fallback_slide_layout(source_layout, enable_text_growth=options.text_growth)
+    )
 
 
-def _fallback_slide_layout(source_layout: RawSlideLayout) -> SlideLayout:
+def _fallback_slide_layout(
+    source_layout: RawSlideLayout, *, enable_text_growth: bool = True
+) -> SlideLayout:
     return _compile_semantic_layout(
         source_layout,
         _fallback_semantic_manifest(source_layout),
         FlexibleSlidePlan(regions=[]),
         TextCapacityPlan(adjustments=[]),
+        enable_text_growth=enable_text_growth,
     )
 
 

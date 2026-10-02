@@ -26,6 +26,7 @@ from pydantic import BaseModel, ValidationError
 from templates.v2 import certified_generation as _certified_generation
 from templates.v2.models.layouts import (
     Component,
+    LayoutGenerationOptions,
     MergedComponent,
     MergedComponents,
     RawSlideLayout,
@@ -151,6 +152,7 @@ def generate_template(
     layouts: RawSlideLayouts,
     slide_image_urls: list[str],
     fonts: dict[str, str] | None = None,
+    generation_options: LayoutGenerationOptions | None = None,
 ) -> SlideLayouts:
     """Generate certified layouts while preserving caller context per worker."""
     if not layouts.layouts:
@@ -179,6 +181,7 @@ def generate_template(
                 index,
                 slide_image_urls[index],
                 fonts,
+                generation_options=generation_options,
             ): index
             for index, layout in enumerate(layouts.layouts)
         }
@@ -613,6 +616,7 @@ def generate_slide_layout(
     fonts: dict[str, str] | None = None,
     *,
     max_tokens: int | None = None,
+    generation_options: LayoutGenerationOptions | None = None,
 ) -> SlideLayout:
     return _certified_generation.generate_slide_layout(
         source_layout,
@@ -620,6 +624,7 @@ def generate_slide_layout(
         slide_image_url,
         fonts,
         max_tokens=max_tokens,
+        generation_options=generation_options,
     )
 
 

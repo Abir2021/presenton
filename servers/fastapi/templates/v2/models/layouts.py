@@ -31,6 +31,16 @@ SemanticElementPath = Annotated[
 HexColor = Annotated[str, Field(pattern=r"^#[0-9A-Fa-f]{6}$")]
 
 
+class LayoutGenerationOptions(BaseModel):
+    """Optional passes; semantic annotation always runs."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    text_growth: bool = True
+    visual_replacement: bool = True
+    flexible_grouping: bool = True
+
+
 class RawSlideLayout(BaseModel):
     id: str
     description: str

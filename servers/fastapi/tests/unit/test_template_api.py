@@ -41,7 +41,7 @@ from models.sql.async_task import AsyncTaskModel
 from models.sql.template_v2 import TemplateV2
 from models.theme_data import PresentationThemeData
 from services.export_task_service import PptxToJsonDocument
-from templates.v2.models.layouts import MergedComponents, RawSlideLayouts, SlideLayouts
+from templates.v2.models.layouts import LayoutGenerationOptions, MergedComponents, RawSlideLayouts, SlideLayouts
 
 
 RAW_LAYOUTS = {
@@ -381,7 +381,8 @@ def test_create_template_converts_generates_and_persists(tmp_path, fake_async_se
 
     convert_mock.assert_awaited_once_with(str(pptx_path))
     generate_mock.assert_called_once()
-    raw_layouts_arg, slide_images_arg, fonts_arg = generate_mock.call_args.args
+    raw_layouts_arg, slide_images_arg, fonts_arg, options_arg = generate_mock.call_args.args
+    assert options_arg == LayoutGenerationOptions()
     assert len(raw_layouts_arg.layouts) == 1
     assert slide_images_arg == ["/app_data/images/slide-1.png"]
     assert fonts_arg == {"Inter": "Inter"}
@@ -411,6 +412,7 @@ def test_create_template_converts_generates_and_persists(tmp_path, fake_async_se
     assert template.layouts == expected_layouts
     assert template.theme == GENERATED_THEME_DATA
     assert template.assets == {
+        "generation_options": LayoutGenerationOptions().model_dump(),
         "icon_type": "bold",
         "icon_weight": "bold",
         "fonts": {"Inter": "Inter"},
@@ -577,6 +579,7 @@ def test_create_template_async_enqueues_task(fake_async_session):
     assert task.status == "pending"
     assert task.message == "Queued for template creation"
     assert task.payload == {
+        "generation_options": LayoutGenerationOptions().model_dump(),
         "pptx_url": "/app_data/uploads/template.pptx",
         "slide_image_urls": ["/app_data/images/slide-1.png"],
         "fonts": {},
@@ -792,10 +795,13 @@ def test_create_template_async_task_updates_slide_status_before_batch_completes(
     session = _TemplateTaskSession(task)
     generated_layouts = _two_template_layouts()["layouts"]
     generation_max_tokens = []
+    options = LayoutGenerationOptions(text_growth=False, visual_replacement=False)
+    task.payload["generation_options"] = options.model_dump()
 
     def fake_generate_slide_layout(
-        _raw_layout, index, _slide_image_url, _fonts, *, max_tokens=None
+        _raw_layout, index, _slide_image_url, _fonts, *, max_tokens=None, generation_options=None
     ):
+        assert generation_options == options
         generation_max_tokens.append(max_tokens)
         return generated_layouts[index]
 
@@ -889,6 +895,7 @@ def test_init_template_persists_assets_without_layouts(tmp_path, fake_async_sess
     assert template.raw_layouts == _normalized_raw_layouts()
     assert template.layouts is None
     assert template.assets == {
+        "generation_options": LayoutGenerationOptions().model_dump(),
         "pptx_url": "/app_data/uploads/quarterly-review.pptx",
         "icon_type": "bold",
         "icon_weight": "bold",
@@ -1155,7 +1162,10 @@ def test_create_template_slide_layouts_returns_generated_layout(
     assert slide_index == 0
     assert slide_image_url == "/app_data/images/slide-1.png"
     assert fonts == {"Inter": "https://example.com/inter.css"}
-    assert generate_mock.call_args.kwargs == {"max_tokens": 16000}
+    assert generate_mock.call_args.kwargs == {
+        "max_tokens": 16000,
+        "generation_options": LayoutGenerationOptions(),
+    }
     assert response.layouts[0].index == 0
     response_layout = response.layouts[0].layout.model_dump(
         mode="json", exclude_none=True
@@ -1259,7 +1269,10 @@ def test_create_template_slide_layouts_preserves_image_url_indexes(
     assert source_layout.id == "slide_2"
     assert slide_index == 1
     assert slide_image_url == "/app_data/images/slide-2.png"
-    assert generate_mock.call_args.kwargs == {"max_tokens": 16000}
+    assert generate_mock.call_args.kwargs == {
+        "max_tokens": 16000,
+        "generation_options": LayoutGenerationOptions(),
+    }
 
 
 def test_create_template_slide_layouts_returns_404_for_missing_template(
